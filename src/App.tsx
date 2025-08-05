@@ -1,6 +1,6 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import Dashboard from "./screens/Dashboard";
+import Dashboard from "./components/adminmodule/Dashboard";
 import UserManagement from "./screens/UserManagement";
 import ApplicationManagement from "./screens/ApplicationManagement";
 import IdCardManagement from "./screens/IdCardManagement";
@@ -69,7 +69,7 @@ const App: React.FC = () => {
           />
           
           <Route 
-            path="/user-management" 
+            path="/usermanagment" 
             element={
               <ProtectedRoute 
                 element={<UserManagement />} 

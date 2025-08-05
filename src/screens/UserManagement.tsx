@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trash2, CheckCircle, XCircle, Pencil, User, Search, X, MoreVertical, Info ,Eye,Edit,Delete } from "lucide-react";
+import { Trash2, CheckCircle, XCircle, Pencil, User, Search, X, MoreVertical, Info, Eye, Edit, Delete } from "lucide-react";
 import { initialUsers } from "../data.ts";
-import Marquee from "../components/Marquee.tsx";
 
 interface User {
   id: number;
@@ -44,11 +43,9 @@ const OfficerManagement = () => {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [actionMenuOpen, setActionMenuOpen] = useState<number | null>(null);
+  const [verificationStep, setVerificationStep] = useState<string>('');
+  const [verificationResults, setVerificationResults] = useState<any>({});
   const [showDetailsModal, setShowDetailsModal] = useState<User | null>(null);
-  const [verificationStep, setVerificationStep] = useState<string>('idle'); // idle, processing, completed, failed
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [documentStatus, setDocumentStatus] = useState<any>({});
   const navigate = useNavigate();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>, setter: any) =>
@@ -100,99 +97,101 @@ const OfficerManagement = () => {
   );
 
   const addUser = () => {
-    const newUserId = users.length + 1;
-    const newUserObject = { ...newUser, id: newUserId };
-    setUsers([...users, newUserObject]);
+    const newId = Math.max(...users.map(u => u.id), 0) + 1;
+    const userToAdd = {
+      ...newUser,
+      id: newId,
+      isVerified: false // Default to pending status
+    };
+    setUsers([...users, userToAdd]);
+    setNewUser({ 
+      fullName: "", 
+      email: "", 
+      phoneNumber: "", 
+      image: "", 
+      isVerified: false,
+      dob: "",
+      address: "",
+      gender: "Male",
+      role: "User"
+    });
+    setImageFile(null);
     setShowForm(false);
-    setNewUser({ fullName: "", email: "", phoneNumber: "", image: "", isVerified: false });
   };
 
-  const verifyUser = (id: number) => {
-    setUsers(users.map((user) => (user.id === id ? { ...user, isVerified: true } : user)));
-  };
-
-  const fetchUsers = async () => {
+  const viewDetails = async (user: User) => {
+    setShowDetailsModal(user);
+    setActionMenuOpen(null);
+    setVerificationStep('photo');
+    setVerificationResults({});
+    
     try {
-      setLoading(true);
+      // Step 1: Photo Verification (Face Recognition)
+      setVerificationStep('photo_processing');
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('http://localhost:8000/public/users', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
       
-      if (!response.ok) {
-        if (response.status === 401) {
-          setError('Unauthenticated. Please login again.');
-          navigate('/');
-          return;
+      // Simulate API call for photo verification
+      setTimeout(async () => {
+        try {
+          const response = await fetch(`http://localhost:8000/admin/users/${user.id}/verify-documents`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          if (response.ok) {
+            const verificationData = await response.json();
+            setVerificationResults(verificationData);
+            setVerificationStep('completed');
+            
+            // Update user verification status
+            setUsers(users.map(u => u.id === user.id ? { ...u, isVerified: true } : u));
+          } else {
+            setVerificationStep('error');
+          }
+        } catch (error) {
+          console.error('Verification error:', error);
+          setVerificationStep('error');
         }
-        throw new Error('Failed to fetch users');
-      }
+      }, 2000);
       
-      const data = await response.json();
-      // Map backend data to frontend format
-      const mappedUsers = data.map((user: any) => ({
-        ...user,
-        fullName: user.name || user.fullName,
-        phoneNumber: user.contact_number || user.phoneNumber,
-        status: user.status || 'Pending' // Default to Pending
-      }));
-      setUsers(mappedUsers);
-      setError(null);
     } catch (error) {
-      console.error('Error fetching users:', error);
-      setError('Failed to fetch users');
-      // Fallback to initial users if API fails
-      setUsers(initialUsers.map(user => ({ ...user, status: 'Pending' })));
-    } finally {
-      setLoading(false);
+      console.error('Error starting verification:', error);
+      setVerificationStep('error');
     }
   };
 
-  const fetchUserDetails = async (userId: number) => {
-    setVerificationStep('processing');
-    try {
-      console.log('DEBUG: Fetching user details for ID:', userId);
-
-      const response = await fetch(`http://localhost:8000/public/users/${userId}`, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      console.log('DEBUG: Response status:', response.status);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch user details: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log('DEBUG: User data received:', data);
-      // The backend returns all user data including document statuses directly on the user object
-      setDocumentStatus(data || {}); 
-      setVerificationStep('completed');
-    } catch (error) {
-      console.error('Error fetching user details:', error);
-      setError('Failed to fetch user details');
-      setVerificationStep('failed');
-    }
+  const toggleActionMenu = (id: number) => {
+    setActionMenuOpen(actionMenuOpen === id ? null : id);
   };
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
+  const addUser = () => {
+    // Generate a new ID (simple approach: increment the highest existing ID)
+    const newId = users.length > 0 ? Math.max(...users.map((u) => u.id)) + 1 : 1;
 
-  useEffect(() => {
-    if (showDetailsModal) {
-      setDocumentStatus({}); // Reset previous status
-      fetchUserDetails(showDetailsModal.id);
-    }
-  }, [showDetailsModal]);
+    // Create new user object
+    const newUserData: User = {
+      id: newId,
+      fullName: newUser.fullName,
+      email: newUser.email,
+      phoneNumber: newUser.phoneNumber,
+      image: newUser.image || "https://via.placeholder.com/150", // Fallback image if none uploaded
+      isVerified: newUser.isVerified,
+      dob: "", // You may want to add inputs for these fields in the form
+      address: "",
+      gender: "",
+      role: "Officer", // Default role, adjust as needed
+    };
 
-  const closeDetailsModal = () => {
-    setShowDetailsModal(null);
+    // Add new user to the users array
+    setUsers([...users, newUserData]);
+
+    // Reset form and close modal
+    setNewUser({ fullName: "", email: "", phoneNumber: "", image: "", isVerified: false });
+    setImageFile(null);
+    setShowForm(false);
   };
 
   return (
@@ -203,21 +202,21 @@ const OfficerManagement = () => {
         <div className="bg-white shadow-sm border-b border-gray-200 px-4 sm:px-6 lg:px-8 py- sm:py-6">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-3 sm:space-y-0">
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Officers Management</h1>
-              <p className="text-sm text-gray-500 mt-1">Manage and monitor officer accounts</p>
+              {/* <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Officers Management</h1> */}
+              <p className="text-xl sm:text-2xl font-bold text-gray-800">Manage and monitor officer accounts</p>
             </div>
-            <Button
+            {/* <Button
               onClick={() => setShowForm(true)}
               className="px-4 py-2 sm:px-5 sm:py-2.5 bg-blue-600 text-white hover:bg-blue-700 shadow-sm text-sm font-medium self-start sm:self-auto"
             >
               + Add Officer
-            </Button>
+            </Button> */}
           </div>
         </div>
 
         {/* Search Bar */}
-        <div className="px-4 sm:px-6 lg:px-8 py-3 sm:py-4 bg-white border-b border-gray-100">
-          <div className="relative max-w-md">
+        <div className="px-4 sm:px-6 lg:px-8 py-3 sm:py-4 bg-white border-b border-gray-100 ">
+          <div className="relative max-w-full border border-gray-200 rounded-lg">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
@@ -597,7 +596,7 @@ const OfficerManagement = () => {
                 Cancel
               </Button>
               <Button 
-                onClick={addUser} 
+                onClick={addUser} // Updated to call addUser function
                 className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 text-sm font-medium"
               >
                 Add Officer
@@ -606,16 +605,13 @@ const OfficerManagement = () => {
           </div>
         </div>
       )}
-      {/* Document Verification Modal */}
+      
+      {/* Details Modal with Verification */}
       {showDetailsModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto transform transition-all">
-            
-            {/* Header */}
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto transform transition-all">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <div className="text-center flex-1">
-                <h1 className="text-2xl font-bold text-blue-600">Document Verification Center</h1>
-              </div>
+              <h2 className="text-xl font-semibold text-gray-800">Officer Details & Verification</h2>
               <button
                 onClick={closeDetailsModal}
                 className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
@@ -625,124 +621,154 @@ const OfficerManagement = () => {
             </div>
             
             <div className="p-6">
-              {/* Verification Overview */}
-              <div className="text-center mb-6">
-                <h2 className="text-xl font-semibold text-gray-800 mb-2">Verification Overview</h2>
-                <p className="text-sm text-gray-600">All listed documents are required for visa processing. Please ensure all documents are valid.</p>
-              </div>
-
-              {/* User Details Section */}
-              <div className="bg-gray-50 rounded-lg p-6 mb-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">User Details</h3>
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <div className="mb-4">
-                      <p className="text-sm font-medium text-gray-600">Full Name</p>
-                      <p className="text-sm text-gray-900">{showDetailsModal.fullName || 'N/A'}</p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* User Information */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium">Officer Information</h3>
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center space-x-3">
+                      <img 
+                        src={showDetailsModal.image} 
+                        alt={showDetailsModal.fullName}
+                        className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+                      />
+                      <div>
+                        <h4 className="font-medium text-lg">{showDetailsModal.fullName}</h4>
+                        <p className="text-sm text-gray-600">ID: #{showDetailsModal.id}</p>
+                      </div>
                     </div>
-                    <div className="mb-4">
-                      <p className="text-sm font-medium text-gray-600">E-mail ID</p>
-                      <p className="text-sm text-gray-900">{showDetailsModal.email || 'N/A'}</p>
-                    </div>
-                    <div className="mb-4">
-                      <p className="text-sm font-medium text-gray-600">Address</p>
-                      <p className="text-sm text-gray-900">{showDetailsModal.address || 'N/A'}</p>
-                    </div>
-                    <div className="mb-4">
-                      <p className="text-sm font-medium text-gray-600">Role</p>
-                      <p className="text-sm text-gray-900">{showDetailsModal.role || 'N/A'}</p>
+                    
+                    <div className="grid grid-cols-1 gap-3">
+                      <div>
+                        <p className="text-xs font-medium text-gray-500">Email</p>
+                        <p className="text-sm text-gray-900">{showDetailsModal.email}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500">Phone</p>
+                        <p className="text-sm text-gray-900">{showDetailsModal.phoneNumber}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500">Date of Birth</p>
+                        <p className="text-sm text-gray-900">{showDetailsModal.dob}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500">Address</p>
+                        <p className="text-sm text-gray-900">{showDetailsModal.address}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500">Gender</p>
+                        <p className="text-sm text-gray-900">{showDetailsModal.gender}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500">Role</p>
+                        <p className="text-sm text-gray-900">{showDetailsModal.role}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500">Verification Status</p>
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          showDetailsModal.isVerified 
+                            ? 'bg-green-100 text-green-700' 
+                            : 'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {showDetailsModal.isVerified ? '✅ Verified' : '⏳ Pending'}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <div className="mb-4">
-                      <p className="text-sm font-medium text-gray-600">Date of Birth</p>
-                      <p className="text-sm text-gray-900">{showDetailsModal.dob || 'N/A'}</p>
+                </div>
+
+                {/* Verification Process */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium">Verification Process</h3>
+                  <div className="space-y-3">
+                    <div className={`rounded-lg p-4 ${
+                      verificationStep === 'photo_processing' ? 'bg-blue-50' : 
+                      verificationStep === 'completed' ? 'bg-green-50' : 
+                      verificationStep === 'error' ? 'bg-red-50' : 'bg-gray-50'
+                    }`}>
+                      <h4 className="font-medium mb-2 flex items-center">
+                        📸 Photo Verification
+                        <span className={`ml-2 px-2 py-1 rounded text-xs font-medium ${
+                          verificationStep === 'photo_processing' ? 'bg-blue-100 text-blue-700' :
+                          verificationStep === 'completed' ? 'bg-green-100 text-green-700' :
+                          verificationStep === 'error' ? 'bg-red-100 text-red-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {verificationStep === 'photo_processing' ? 'Processing...' :
+                           verificationStep === 'completed' ? 'Completed ✅' :
+                           verificationStep === 'error' ? 'Failed ❌' :
+                           'Pending'}
+                        </span>
+                      </h4>
+                      <div className="mt-3">
+                        <img 
+                          src={showDetailsModal.image} 
+                          alt="Verification Photo"
+                          className="w-24 h-24 rounded-lg object-cover border-2 border-blue-200"
+                        />
+                        <p className={`text-sm mt-2 ${
+                          verificationStep === 'photo_processing' ? 'text-blue-600' :
+                          verificationStep === 'completed' ? 'text-green-600' :
+                          verificationStep === 'error' ? 'text-red-600' :
+                          'text-gray-600'
+                        }`}>
+                          {verificationStep === 'photo_processing' ? 'Analyzing facial features for verification...' :
+                           verificationStep === 'completed' ? 'Face recognition completed successfully!' :
+                           verificationStep === 'error' ? 'Verification failed. Please try again.' :
+                           'Click View Details to start verification'}
+                        </p>
+                      </div>
                     </div>
-                    <div className="mb-4">
-                      <p className="text-sm font-medium text-gray-600">Contact Number</p>
-                      <p className="text-sm text-gray-900">{showDetailsModal.phoneNumber || 'N/A'}</p>
+
+                    <div className={`rounded-lg p-4 ${
+                      verificationStep === 'completed' ? 'bg-green-50' : 'bg-gray-50'
+                    }`}>
+                      <h4 className="font-medium mb-2 flex items-center">
+                        📘 Document Verification
+                        <span className={`ml-2 px-2 py-1 rounded text-xs font-medium ${
+                          verificationStep === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {verificationStep === 'completed' ? 'Completed ✅' : 'Pending'}
+                        </span>
+                      </h4>
+                      <p className={`text-sm ${
+                        verificationStep === 'completed' ? 'text-green-600' : 'text-gray-600'
+                      }`}>
+                        {verificationStep === 'completed' ? 
+                          'Document verification completed successfully!' : 
+                          'Waiting for photo verification to complete...'}
+                      </p>
                     </div>
-                    <div className="mb-4">
-                      <p className="text-sm font-medium text-gray-600">Gender</p>
-                      <p className="text-sm text-gray-900">{showDetailsModal.gender || 'N/A'}</p>
+
+                    <div className={`rounded-lg p-4 ${
+                      verificationStep === 'completed' ? 'bg-green-50' : 'bg-gray-50'
+                    }`}>
+                      <h4 className="font-medium mb-2 flex items-center">
+                        🆔 ID Verification
+                        <span className={`ml-2 px-2 py-1 rounded text-xs font-medium ${
+                          verificationStep === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {verificationStep === 'completed' ? 'Completed ✅' : 'Pending'}
+                        </span>
+                      </h4>
+                      <p className={`text-sm ${
+                        verificationStep === 'completed' ? 'text-green-600' : 'text-gray-600'
+                      }`}>
+                        {verificationStep === 'completed' ? 
+                          'ID verification completed successfully!' : 
+                          'Waiting for previous steps to complete...'}
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Document Status Summary */}
-              <div className="bg-gray-50 rounded-lg p-6 mb-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">Document Status Summary</h3>
-                {verificationStep === 'processing' ? (
-                  <div className="flex items-center justify-center py-10">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    <p className="ml-4 text-gray-600">Loading document status...</p>
-                  </div>
-                ) : verificationStep === 'failed' ? (
-                  <div className="text-center py-10 text-red-600">
-                    <p>Failed to load document details. Please try again.</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="space-y-3">
-                      {[
-                        { name: 'Passport', key: 'passport_status' },
-                        { name: 'Marriage Certificate', key: 'marriage_certificate_status' },
-                        { name: 'Emirates ID', key: 'emirates_id_status' },
-                        { name: 'Property Ownership', key: 'property_document_status' }
-                      ].map((doc) => {
-                        const status = documentStatus?.[doc.key] || 'pending';
-                        const isApproved = status === 'approved' || status === 'Approved';
-                        const isRejected = status === 'rejected' || status === 'Rejected';
-
-                        return (
-                          <div key={doc.key} className="flex items-center justify-between py-3 border-b border-gray-200 last:border-b-0">
-                            <div className="flex items-center space-x-3">
-                              {isApproved ? (
-                                <CheckCircle2 size={16} className="text-green-500" />
-                              ) : isRejected ? (
-                                <XCircle size={16} className="text-red-500" />
-                              ) : (
-                                <X size={16} className="text-gray-400" />
-                              )}
-                              <span className="text-sm font-medium text-gray-700">{doc.name}</span>
-                            </div>
-                            <span className={`text-sm font-medium ${
-                              isApproved ? 'text-green-600' : isRejected ? 'text-red-600' : 'text-blue-600'
-                            }`}>
-                              {isApproved ? 'Approved' : isRejected ? 'Rejected' : 'Required for Visa'}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <p className="text-sm text-gray-600">
-                        {documentStatus && (
-                          documentStatus.passport_status === 'approved' &&
-                          documentStatus.marriage_certificate_status === 'approved' &&
-                          documentStatus.emirates_id_status === 'approved' &&
-                          documentStatus.property_document_status === 'approved'
-                        )
-                          ? 'All documents have been successfully verified.'
-                          : 'Some documents require verification. Please review the statuses above.'}
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Action Button */}
-              <div className="flex justify-end">
+              <div className="mt-6 flex justify-end">
                 <button 
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-                  onClick={() => {
-                    setVerificationStep('processing');
-                    // Start verification process
-                  }}
+                  onClick={closeDetailsModal}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
-                  📋 Verification Details
+                  Close
                 </button>
               </div>
             </div>
@@ -750,25 +776,6 @@ const OfficerManagement = () => {
         </div>
       )}
       
-      {loading && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md transform transition-all">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-800">Loading...</h2>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {error && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md transform transition-all">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-800">{error}</h2>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
