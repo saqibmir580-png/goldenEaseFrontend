@@ -272,7 +272,7 @@ const LoginPage = () => {
                         <div className="ml-4">
                           {editUserId === user.id ? (
                             <Input 
-                              name="full_name" 
+                              name="full_name"
                               value={editUser?.full_name || ""} 
                               onChange={(e: any) => handleChange(e, setEditUser)} 
                               className="max-w-xs"
@@ -435,3 +435,12 @@ const LoginPage = () => {
 };
 
 export default LoginPage;
+
+
+
+
+
+
+
+
+

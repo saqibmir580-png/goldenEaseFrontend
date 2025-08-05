@@ -17,59 +17,58 @@ const Login = () => {
   // Check if user is already logged in
   useEffect(() => {
     const token = localStorage.getItem('auth_token');
-    if (token) {
-      const userData = localStorage.getItem('user_data');
-      if (userData) {
+    const userData = localStorage.getItem('user_data');
+    const path = window.location.pathname;
+    if (token && userData) {
+      try {
         const user = JSON.parse(userData);
         if (user.role === 'admin') {
-          navigate('/user-management');
+          if (path !== '/dashboard') navigate('/dashboard');
         } else {
-          navigate('/user/verification');
+          // If user is on dashboard, redirect to /user/verification
+          if (path === '/dashboard') {
+            navigate('/user/verification');
+          } else {
+            navigate('/user/verification');
+          }
         }
-      } else {
+      } catch {
         navigate('/user/verification');
       }
+    } else if (token) {
+      navigate('/user/verification');
     }
   }, [navigate]);
 
-  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleLogin = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setState((prev) => ({ ...prev, error: "", isLoading: true }));
-    try {
-      if (!form.email || !form.password) {
-        throw new Error("Please enter both email and password");
-      }
-      // Use FormData for backend
-      const formData = new FormData();
-      formData.append('username', form.email);
-      formData.append('password', form.password);
-      const response = await fetch(`${API_BASE_URL}/login`, {
-        method: 'POST',
-        body: formData,
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Login failed');
-      }
-      const data = await response.json();
-      // Store JWT and user info
-      localStorage.setItem('auth_token', data.access_token);
-      localStorage.setItem('user_data', JSON.stringify(data.user));
+    const HARDCODED_USERS = [
+      { email: 'admin@GoldenEase.com', password: 'admin123', role: 'admin' },
+      { email: 'user@GoldenEase.com', password: 'user123', role: 'user' },
+    ];
+    if (!form.email || !form.password) {
+      setState((prev) => ({ ...prev, error: "Please enter both email and password", isLoading: false }));
+      return;
+    }
+    const found = HARDCODED_USERS.find(
+      u => u.email === form.email && u.password === form.password
+    );
+    if (found) {
+      // Simulate token and user info
+      localStorage.setItem('auth_token', 'hardcoded_token');
+      localStorage.setItem('user_data', JSON.stringify({ email: found.email, role: found.role }));
       localStorage.setItem('isAuthenticated', 'true');
       setState((prev) => ({ ...prev, loginSuccess: true, isLoading: false }));
       setTimeout(() => {
-        if (data.user.role === 'admin') {
-          navigate('/user-management');
+        if (found.role === 'admin') {
+          navigate('/dashboard');
         } else {
           navigate('/user/verification');
         }
       }, 1000);
-    } catch (err) {
-      setState((prev) => ({
-        ...prev,
-        error: err instanceof Error ? err.message : "Login failed. Please try again.",
-        isLoading: false,
-      }));
+    } else {
+      setState((prev) => ({ ...prev, error: "Invalid email or password", isLoading: false }));
     }
   };
 
@@ -150,6 +149,10 @@ const Login = () => {
             )}
 
             <form onSubmit={handleLogin} className="space-y-6">
+            <div className="text-xs text-gray-400 text-center mt-2">
+              <div>Admin: admin@GoldenEase.com / admin123</div>
+              <div>User: user@GoldenEase.com / user123</div>
+            </div>
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                   Email address
